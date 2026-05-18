@@ -84,22 +84,20 @@ def evaluate_split(args: argparse.Namespace, split_name: str, normal_bank: Knowl
         pin_memory=torch.cuda.is_available(),
     )
 
-    normal_scores, normal_patch_scores, *_ = normal_bank.predict(loader)
-    pathological_scores, pathological_patch_scores, *_ = pathological_bank.predict(loader)
+    _, normal_patch_scores, *_ = normal_bank.predict(loader)
+    _, pathological_patch_scores, *_ = pathological_bank.predict(loader)
     y_true = np.asarray(targets, dtype=int)
-    normal_scores = np.asarray(normal_scores, dtype=float)
-    pathological_scores = np.asarray(pathological_scores, dtype=float)
 
     normal_patch_scores = np.asarray(normal_patch_scores, dtype=float)
     pathological_patch_scores = np.asarray(pathological_patch_scores, dtype=float)
     delta = normal_patch_scores - pathological_patch_scores
     delta[delta < 0] = 0
-    delta_scores = delta.reshape(delta.shape[0], -1).mean(axis=1)
+    contrastive_retrieval_scores = delta.reshape(delta.shape[0], -1).mean(axis=1)
 
     metrics = {
-        "normal_auroc": float(roc_auc_score(y_true, normal_scores)) if len(np.unique(y_true)) > 1 else None,
-        "pathological_auroc": float(roc_auc_score(y_true, pathological_scores)) if len(np.unique(y_true)) > 1 else None,
-        "delta_auroc": float(roc_auc_score(y_true, delta_scores)) if len(np.unique(y_true)) > 1 else None,
+        "contrastive_retrieval_auroc": float(roc_auc_score(y_true, contrastive_retrieval_scores))
+        if len(np.unique(y_true)) > 1
+        else None,
         "num_images": int(len(y_true)),
     }
 
@@ -107,9 +105,9 @@ def evaluate_split(args: argparse.Namespace, split_name: str, normal_bank: Knowl
     result_path = args.output_dir / f"{split_name}_predictions.csv"
     with result_path.open("w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["image_path", "y_true", "normal_score", "pathological_score", "delta_score"])
-        for image_path, label, normal_score, pathological_score, delta_score in zip(img_paths, y_true, normal_scores, pathological_scores, delta_scores):
-            writer.writerow([image_path, int(label), float(normal_score), float(pathological_score), float(delta_score)])
+        writer.writerow(["image_path", "y_true", "contrastive_retrieval_score"])
+        for image_path, label, contrastive_retrieval_score in zip(img_paths, y_true, contrastive_retrieval_scores):
+            writer.writerow([image_path, int(label), float(contrastive_retrieval_score)])
 
     metrics_path = args.output_dir / f"{split_name}_metrics.json"
     metrics_path.write_text(json.dumps(metrics, indent=2) + "\n")
